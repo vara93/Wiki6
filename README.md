@@ -29,6 +29,12 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
 - `POST /api/save` — `{path, file_name, content}` сохранить markdown и обновить `meta.json.updated`.
 - `POST /api/upload` — `Form(path, file)` загрузить в `assets/`.
 - `POST /api/trash` — `{path}` переместить в `.trash/<timestamp>/<path>`.
+- Контракт ответа создания: `{ "ok": true, "path": "<relative>", "view_url": "/view/<relative>" }`.
+
+### Быстрая самопроверка
+1. Создать компанию: отправить `POST /api/mkdir` с `{"parent":"","name":"FD","title":"FD","type_value":"company"}`.
+2. Убедиться, что появилась папка: `/opt/wiki/content/FD`.
+3. Открыть в браузере `/view/FD` — должна открыться HTML-страница wiki (без JSON 404).
 
 ### Дополнительно: systemd unit (опционально)
 

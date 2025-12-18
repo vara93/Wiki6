@@ -140,7 +140,11 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         const data = await res.json();
         closeModal();
-        window.location.href = data.path ? `/view/${data.path}` : window.location.href;
+        if (data.ok && data.view_url) {
+          window.location.href = data.view_url;
+        } else {
+          window.location.href = data.path ? `/view/${data.path}` : window.location.href;
+        }
       } catch (err) {
         console.error(err);
         alert("Ошибка сети");

@@ -1,3 +1,4 @@
+import urllib.parse
 from pathlib import Path
 from typing import Optional
 
@@ -70,14 +71,25 @@ def _validate_exists(path: Path) -> None:
         raise HTTPException(status_code=404, detail="Not found")
 
 
+@app.get("/view", response_class=HTMLResponse)
+async def view_root(request: Request):
+    return await view_page(request, path="", tab=None)
+
+
 @app.get("/view/{path:path}", response_class=HTMLResponse)
 async def view_page(request: Request, path: str, tab: Optional[str] = None):
-    folder = wiki_fs.resolve_path(path or "")
+    decoded_path = urllib.parse.unquote(path or "")
+    folder = wiki_fs.resolve_path(decoded_path or "")
     if not folder.exists():
-        raise HTTPException(status_code=404, detail="Путь не найден")
+        context = {
+            "request": request,
+            "missing_path": decoded_path,
+            **shared_context(decoded_path),
+        }
+        return templates.TemplateResponse("not_found.html", context, status_code=404)
     meta = wiki_fs.load_meta(folder if folder.is_dir() else folder.parent)
     entity_type = meta.get("type", "document")
-    breadcrumbs = wiki_fs.breadcrumbs(path)
+    breadcrumbs = wiki_fs.breadcrumbs(decoded_path)
     content_html = ""
     active_tab = tab
     service_tabs = []
@@ -100,19 +112,19 @@ async def view_page(request: Request, path: str, tab: Optional[str] = None):
             if filename == active_tab:
                 content_html = html
     else:
-        md_file = _resolve_folder_and_file(path, tab)
-        _validate_exists(md_file)
-        content_html = render_markdown(wiki_fs.read_markdown(md_file))
+        md_file = _resolve_folder_and_file(decoded_path, tab)
+        if md_file.exists():
+            content_html = render_markdown(wiki_fs.read_markdown(md_file))
 
     context = {
         "request": request,
-        "path": path,
+        "path": decoded_path,
         "meta": meta,
         "breadcrumbs": breadcrumbs,
         "content_html": content_html,
         "service_tabs": service_tabs,
         "active_tab": active_tab,
-        **shared_context(path),
+        **shared_context(decoded_path),
     }
     return templates.TemplateResponse("view.html", context)
 
@@ -174,7 +186,8 @@ async def api_mkdir(payload: MkdirPayload):
     except FileExistsError:
         raise HTTPException(status_code=400, detail="Узел уже существует")
     search.update_index_for_path(folder.relative_to(wiki_fs.CONTENT_ROOT).as_posix())
-    return {"path": folder.relative_to(wiki_fs.CONTENT_ROOT).as_posix(), "title": payload.title}
+    path_str = folder.relative_to(wiki_fs.CONTENT_ROOT).as_posix()
+    return {"ok": True, "path": path_str, "view_url": f"/view/{path_str}", "title": payload.title}
 
 
 @app.post("/api/create-page")
@@ -184,7 +197,8 @@ async def api_create_page(payload: CreatePagePayload):
     except FileExistsError:
         raise HTTPException(status_code=400, detail="Узел уже существует")
     search.update_index_for_path(folder.relative_to(wiki_fs.CONTENT_ROOT).as_posix())
-    return {"path": folder.relative_to(wiki_fs.CONTENT_ROOT).as_posix(), "title": payload.title}
+    path_str = folder.relative_to(wiki_fs.CONTENT_ROOT).as_posix()
+    return {"ok": True, "path": path_str, "view_url": f"/view/{path_str}", "title": payload.title}
 
 
 @app.post("/api/save")
@@ -193,7 +207,7 @@ async def api_save(payload: SavePayload):
     md_path = target_folder / payload.file_name
     wiki_fs.write_markdown(md_path, payload.content)
     search.update_index_for_path(payload.path)
-    return {"saved": True, "path": payload.path, "file": payload.file_name}
+    return {"ok": True, "saved": True, "path": payload.path, "file": payload.file_name}
 
 
 @app.post("/api/upload")
@@ -201,14 +215,20 @@ async def api_upload(path: str = Form(...), file: UploadFile = File(...)):
     data = await file.read()
     dest = wiki_fs.upload_file(path or "", file.filename, data)
     search.update_index_for_path(path)
-    return {"uploaded": dest.name, "url": f"/content/{dest.relative_to(wiki_fs.CONTENT_ROOT)}"}
+    path_str = path or ""
+    return {
+        "ok": True,
+        "uploaded": dest.name,
+        "url": f"/content/{dest.relative_to(wiki_fs.CONTENT_ROOT)}",
+        "view_url": f"/view/{path_str}" if path_str else "/view",
+    }
 
 
 @app.post("/api/trash")
 async def api_trash(payload: TrashPayload):
     moved = wiki_fs.move_to_trash(payload.path)
     search.update_index_for_path(payload.path)
-    return {"trashed": payload.path, "moved_to": moved.as_posix()}
+    return {"ok": True, "trashed": payload.path, "moved_to": moved.as_posix()}
 
 
 @app.post("/save/{path:path}")
