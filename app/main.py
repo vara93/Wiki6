@@ -6,7 +6,7 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import markdown
 
 from . import search, wiki_fs
@@ -33,8 +33,8 @@ def render_markdown(text: str) -> str:
     )
 
 
-def shared_context(current_path: str = ""):
-    return {"tree": wiki_fs.build_tree(), "companies": wiki_fs.list_companies(), "current_path": current_path}
+def shared_context(current_path: str = "", current_type: str = "root"):
+    return {"companies": wiki_fs.list_companies(), "current_path": current_path, "current_type": current_type}
 
 
 @app.on_event("startup")
@@ -84,7 +84,7 @@ async def view_page(request: Request, path: str, tab: Optional[str] = None):
         context = {
             "request": request,
             "missing_path": decoded_path,
-            **shared_context(decoded_path),
+            **shared_context(decoded_path, "root"),
         }
         return templates.TemplateResponse("not_found.html", context, status_code=404)
     meta = wiki_fs.load_meta(folder if folder.is_dir() else folder.parent)
@@ -93,6 +93,8 @@ async def view_page(request: Request, path: str, tab: Optional[str] = None):
     content_html = ""
     active_tab = tab
     service_tabs = []
+    has_index = False
+    index_path = folder / "index.md" if folder.is_dir() else folder
 
     if entity_type == "service" and folder.is_dir():
         tab_files = [
@@ -111,9 +113,13 @@ async def view_page(request: Request, path: str, tab: Optional[str] = None):
             service_tabs.append({"key": filename, "title": title, "html": html, "exists": file_path.exists()})
             if filename == active_tab:
                 content_html = html
+        if not content_html and index_path.exists():
+            has_index = True
+            content_html = render_markdown(wiki_fs.read_markdown(index_path))
     else:
         md_file = _resolve_folder_and_file(decoded_path, tab)
         if md_file.exists():
+            has_index = True
             content_html = render_markdown(wiki_fs.read_markdown(md_file))
 
     context = {
@@ -124,7 +130,8 @@ async def view_page(request: Request, path: str, tab: Optional[str] = None):
         "content_html": content_html,
         "service_tabs": service_tabs,
         "active_tab": active_tab,
-        **shared_context(decoded_path),
+        "has_index": has_index,
+        **shared_context(decoded_path, entity_type),
     }
     return templates.TemplateResponse("view.html", context)
 
@@ -159,14 +166,14 @@ class MkdirPayload(BaseModel):
     parent: str = ""
     name: str
     title: str
-    type_value: str
+    type: str = Field(alias="type")
 
 
 class CreatePagePayload(BaseModel):
     parent: str = ""
     name: str
     title: str
-    type_value: str
+    type: str = Field(alias="type")
 
 
 class SavePayload(BaseModel):
@@ -182,7 +189,7 @@ class TrashPayload(BaseModel):
 @app.post("/api/mkdir")
 async def api_mkdir(payload: MkdirPayload):
     try:
-        folder = wiki_fs.create_folder(payload.parent or "", payload.name, payload.type_value, payload.title)
+        folder = wiki_fs.create_folder(payload.parent or "", payload.name, payload.type, payload.title)
     except wiki_fs.WikiPathError as e:
         raise HTTPException(
             status_code=400,
@@ -201,7 +208,7 @@ async def api_mkdir(payload: MkdirPayload):
 @app.post("/api/create-page")
 async def api_create_page(payload: CreatePagePayload):
     try:
-        folder = wiki_fs.create_page(payload.parent or "", payload.name, payload.title, payload.type_value)
+        folder = wiki_fs.create_page(payload.parent or "", payload.name, payload.title, payload.type)
     except wiki_fs.WikiPathError as e:
         raise HTTPException(
             status_code=400,
@@ -247,6 +254,11 @@ async def api_trash(payload: TrashPayload):
     return {"ok": True, "trashed": payload.path, "moved_to": moved.as_posix()}
 
 
+@app.get("/api/tree")
+async def api_tree():
+    return {"ok": True, "tree": wiki_fs.build_tree()}
+
+
 @app.post("/save/{path:path}")
 async def save_page(path: str, file_name: str = Form(...), content: str = Form(...)):
     target_folder = wiki_fs.resolve_path(path or "")
@@ -259,7 +271,7 @@ async def save_page(path: str, file_name: str = Form(...), content: str = Form(.
 @app.get("/search", response_class=HTMLResponse)
 async def search_page(request: Request, q: Optional[str] = None):
     results = search.search(q or "")
-    context = {"request": request, "results": results, "query": q or "", **shared_context()}
+    context = {"request": request, "results": results, "query": q or "", **shared_context("", "root")}
     return templates.TemplateResponse("search.html", context)
 
 

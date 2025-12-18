@@ -9,9 +9,21 @@ CONTENT_ROOT = Path(os.environ.get("WIKI_CONTENT_ROOT", "/opt/wiki/content")).re
 TRASH_ROOT = CONTENT_ROOT / ".trash"
 INDEX_FILE = Path(os.environ.get("WIKI_INDEX_FILE", "/opt/wiki/.index.json")).resolve()
 
+ALLOWED_CHILDREN = {
+    None: {"company"},
+    "root": {"company"},
+    "company": {"dc"},
+    "dc": {"section", "document", "service", "server", "network"},
+    "section": {"section", "document", "service", "server", "network"},
+    "document": set(),
+    "service": set(),
+    "server": set(),
+    "network": set(),
+}
+
 
 class WikiPathError(Exception):
-    """Raised when a resolved path is outside the content root."""
+    """Raised when a resolved path is outside the content root or violates structure."""
 
 
 def ensure_content_root() -> None:
@@ -71,12 +83,30 @@ def default_meta(name: str, type_value: str = "document") -> Dict:
     return {"title": name, "type": type_value, "created": _now_iso(), "updated": _now_iso()}
 
 
+def node_type(folder: Path, parent_is_root: bool = False) -> str:
+    if folder == CONTENT_ROOT:
+        return "root"
+    meta = load_meta(folder)
+    return meta.get("type", "section" if not parent_is_root else "company")
+
+
+def allowed_children(parent_type: str | None) -> set:
+    return ALLOWED_CHILDREN.get(parent_type, set())
+
+
+def validate_child_type(parent_type: str | None, child_type: str) -> None:
+    if child_type not in allowed_children(parent_type):
+        raise WikiPathError(f"Нельзя создавать {child_type} внутри {parent_type or 'root'}")
+
+
 def list_companies() -> List[Dict]:
     companies: List[Dict] = []
     for item in sorted(CONTENT_ROOT.iterdir()):
         if not item.is_dir() or item.name.startswith("."):
             continue
         meta = load_meta(item)
+        if meta.get("type") != "company":
+            continue
         companies.append(
             {
                 "name": item.name,
@@ -88,18 +118,25 @@ def list_companies() -> List[Dict]:
     return companies
 
 
-def build_tree(base: Path = CONTENT_ROOT) -> List[Dict]:
+def build_tree(base: Path = CONTENT_ROOT, parent_type: str | None = None) -> List[Dict]:
     nodes: List[Dict] = []
     for entry in sorted(base.iterdir()):
         if not entry.is_dir() or entry.name.startswith("."):
             continue
         meta = load_meta(entry)
+        entry_type = meta.get("type")
+        if entry == CONTENT_ROOT:
+            entry_type = "root"
+        if parent_type is None:
+            parent_type = "root"
+        if entry_type not in allowed_children(parent_type):
+            continue
         node = {
             "name": entry.name,
             "title": meta.get("title", entry.name),
-            "type": meta.get("type", "document"),
+            "type": entry_type,
             "path": entry.relative_to(CONTENT_ROOT).as_posix(),
-            "children": build_tree(entry),
+            "children": build_tree(entry, entry_type),
         }
         nodes.append(node)
     return nodes
@@ -117,9 +154,28 @@ def write_markdown(markdown_path: Path, content: str) -> None:
     save_meta(markdown_path.parent, load_meta(markdown_path.parent))
 
 
+def ensure_index(folder: Path, type_value: str, title: str) -> None:
+    index_path = folder / "index.md"
+    if index_path.exists():
+        return
+    if type_value == "company":
+        body = f"# {title}\n\n## Описание\n\nДобавьте описание компании.\n\n## ЦОДы\n- "
+    elif type_value == "dc":
+        body = f"# {title}\n\n## Описание ЦОД\n\nДобавьте детали площадки.\n\n## Разделы\n- "
+    elif type_value == "section":
+        body = f"# {title}\n\n## Раздел\n\nДобавьте контент раздела."
+    elif type_value == "service":
+        body = f"# {title}\n\nИспользуйте вкладки сервиса для детального описания."
+    else:
+        body = f"# {title}\n\nДобавьте контент."
+    create_markdown_page(folder, "index.md", title, body)
+
+
 def create_folder(parent_rel: str, name: str, type_value: str = "document", title: str | None = None) -> Path:
     validate_system_name(name)
     parent = resolve_path(parent_rel)
+    parent_type = node_type(parent, parent == CONTENT_ROOT)
+    validate_child_type(parent_type if parent_type != "root" else None, type_value)
     parent.mkdir(parents=True, exist_ok=True)
     new_folder = parent / name
     new_folder.mkdir(parents=False, exist_ok=False)
@@ -127,6 +183,7 @@ def create_folder(parent_rel: str, name: str, type_value: str = "document", titl
     meta["title"] = title or meta.get("title", name)
     meta["type"] = type_value
     save_meta(new_folder, meta)
+    ensure_index(new_folder, type_value, meta["title"])
     return new_folder
 
 
@@ -207,6 +264,7 @@ def create_page(parent_rel: str, name: str, title: str, type_value: str) -> Path
         create_network_template(folder, title)
     else:
         create_document_template(folder, title)
+    ensure_index(folder, type_value, title)
     return folder
 
 

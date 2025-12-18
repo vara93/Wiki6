@@ -41,6 +41,18 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
 - Пробелы заменяются на `-`, кириллица требует ручного/авто-транслита.
 - При ошибке валидации API вернёт `{ "ok": false, "error": "...", "field": "name" }` с кодом 400/409.
 
+### Структура
+- В корне — только Company.
+- Внутри Company — только DC.
+- Внутри DC или Section — Section/Document/Service/Server/Network.
+- Каждый узел: папка + `meta.json` + `index.md` (Service дополнительно вкладки `overview.md` ... `service-network.md`).
+
+### Тест-кейс
+1. Создать Company «Первый Дом» через `/api/mkdir` (`parent=""`, `type="company"`).
+2. Внутри неё создать DC «Машкова» (`parent="Pervyy_Dom"` после slug).
+3. Внутри DC создать Document «Первая приемная`.
+4. Проверить: DC отображается внутри компании в дереве; `/view/<company>/<dc>` показывает страницу; `/view/<company>/<dc>/<doc>` открывает `index.md`.
+
 ### Дополнительно: systemd unit (опционально)
 
 Создайте файл `/etc/systemd/system/internal-wiki.service`:

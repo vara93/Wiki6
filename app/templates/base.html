@@ -40,7 +40,7 @@
     .admonition.danger { border-color: #ef4444; }
   </style>
 </head>
-<body class="h-full text-slate-100 bg-slate-950 font-sans" data-current-path="{{ current_path if current_path is defined else '' }}">
+<body class="h-full text-slate-100 bg-slate-950 font-sans" data-current-path="{{ current_path if current_path is defined else '' }}" data-current-type="{{ current_type if current_type is defined else 'root' }}">
   <div class="flex h-full">
     <aside class="w-64 bg-card border-r border-slate-800 p-4 overflow-y-auto hidden md:block">
       <div class="flex items-center gap-2 text-slate-300 font-semibold mb-4">

@@ -33,6 +33,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const body = document.body;
   const currentPath = body.dataset.currentPath || "";
+  const currentType = body.dataset.currentType || "root";
   const menuBtn = document.getElementById("create-menu-btn");
   const menu = document.getElementById("create-menu");
   const modalBackdrop = document.getElementById("modal-backdrop");
@@ -51,6 +52,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const mdTypes = new Set(["document", "service", "server", "network"]);
   const nameRegex = /^[a-zA-Z0-9_-]+$/;
+  const allowedByParent = {
+    root: ["company"],
+    company: ["dc"],
+    dc: ["section", "document", "service", "server", "network"],
+    section: ["section", "document", "service", "server", "network"],
+  };
 
   const hideMenu = () => menu && menu.classList.add("hidden");
 
@@ -126,6 +133,61 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
+  const applyAllowedTypes = (contextType) => {
+    const allowed = allowedByParent[contextType] || [];
+    const options = Array.from(createType.options);
+    options.forEach((opt) => {
+      opt.disabled = !allowed.includes(opt.value);
+      opt.classList.toggle("text-slate-600", opt.disabled);
+    });
+    if (!allowed.includes(createType.value)) {
+      createType.value = allowed[0] || "";
+    }
+    return allowed;
+  };
+
+  const renderSidebar = async () => {
+    const container = document.getElementById("sidebar-tree");
+    if (!container) return;
+    container.innerHTML = '<div class="text-slate-500 text-xs">Загрузка...</div>';
+    try {
+      const res = await fetch("/api/tree");
+      const data = await res.json();
+      if (!data.ok) throw new Error("tree fetch error");
+      const renderNodes = (nodes, level = 0) => {
+        const items = nodes
+          .map((n) => {
+            const children = n.children && n.children.length ? renderNodes(n.children, level + 1) : "";
+            const icon =
+              n.type === "company"
+                ? "building-2"
+                : n.type === "dc"
+                ? "server"
+                : n.type === "section"
+                ? "folder"
+                : "file-text";
+            return `
+              <div class="mt-1">
+                <a href="/view/${n.path}" class="flex items-center gap-2 px-${level > 0 ? 2 : 0} py-1 rounded hover:bg-slate-900/60">
+                  <i data-lucide="${icon}" class="w-4 h-4 text-accent"></i>
+                  <span>${n.title}</span>
+                  <span class="text-[10px] uppercase text-slate-500 border border-slate-800 px-1 rounded">${n.type}</span>
+                </a>
+                ${children}
+              </div>
+            `;
+          })
+          .join("");
+        return `<div class="${level > 0 ? "pl-4 border-l border-slate-800" : ""}">${items}</div>`;
+      };
+      container.innerHTML = renderNodes(data.tree || []);
+      lucide.createIcons();
+    } catch (err) {
+      console.error(err);
+      container.innerHTML = '<div class="text-rose-400 text-xs">Ошибка загрузки дерева</div>';
+    }
+  };
+
   if (menuBtn && menu) {
     menuBtn.addEventListener("click", () => {
       menu.classList.toggle("hidden");
@@ -136,6 +198,8 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+
+  renderSidebar();
 
   if (createTitle && createName) {
     createTitle.addEventListener("input", () => {
@@ -156,13 +220,26 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  const contextAllowedTypes = (parentPath) => {
+    if (!parentPath) return applyAllowedTypes("root");
+    if (parentPath === currentPath) return applyAllowedTypes(currentType);
+    return applyAllowedTypes(currentType); // fallback
+  };
+
   document.querySelectorAll("[data-create-type]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const type = btn.dataset.createType;
-      createType.value = type;
       createParent.value = currentPath;
       createName.value = "";
       createTitle.value = "";
+      const allowed = contextAllowedTypes(currentPath);
+      if (!allowed.includes(type)) {
+        setError("Тип недоступен для выбранного узла");
+        createType.value = allowed[0] || "";
+        openModal("create");
+        return;
+      }
+      createType.value = type;
       setError("");
       hideMenu();
       openModal("create");
@@ -171,11 +248,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
   document.querySelectorAll("[data-open-create]").forEach((btn) => {
     btn.addEventListener("click", () => {
-      createType.value = btn.dataset.openCreate || "section";
-      createParent.value = btn.dataset.parent || currentPath;
+      const parentPath = btn.dataset.parent || currentPath;
+      const desired = btn.dataset.openCreate || "section";
+      createParent.value = parentPath;
       createName.value = "";
       createTitle.value = "";
-      setError("");
+      const allowed = contextAllowedTypes(parentPath);
+      if (!allowed.includes(desired)) {
+        setError("Тип недоступен для выбранного узла");
+        createType.value = allowed[0] || "";
+      } else {
+        createType.value = desired;
+        setError("");
+      }
       openModal("create");
     });
   });
@@ -196,9 +281,14 @@ document.addEventListener("DOMContentLoaded", () => {
     createForm.addEventListener("submit", async (e) => {
       e.preventDefault();
       setError("");
+      const allowed = contextAllowedTypes(createParent.value);
       const nameValue = createName.value.trim();
       if (!nameRegex.test(nameValue)) {
         setError("Используйте латиницу, цифры, - или _ (без пробелов)");
+        return;
+      }
+      if (allowed.length && !allowed.includes(createType.value)) {
+        setError("Тип недоступен для выбранного родителя");
         return;
       }
       const typeValue = createType.value;
@@ -206,7 +296,7 @@ document.addEventListener("DOMContentLoaded", () => {
         parent: createParent.value || "",
         name: nameValue,
         title: createTitle.value.trim() || nameValue,
-        type_value: typeValue,
+        type: typeValue,
       };
       const endpoint = mdTypes.has(typeValue) ? "/api/create-page" : "/api/mkdir";
       try {
@@ -235,6 +325,7 @@ document.addEventListener("DOMContentLoaded", () => {
         } else {
           window.location.href = data.path ? `/view/${data.path}` : window.location.href;
         }
+        renderSidebar();
       } catch (err) {
         console.error(err);
         setError("Ошибка сети. Проверьте подключение.");
