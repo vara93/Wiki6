@@ -190,6 +190,19 @@ def build_tree(base: Path = CONTENT_ROOT, parent_type: str | None = None) -> Lis
     return nodes
 
 
+def build_subtree(rel_path: str) -> Dict:
+    base = resolve_path(rel_path or "")
+    meta = load_meta(base)
+    t = meta.get("type", "section")
+    return {
+        "name": base.name if base != CONTENT_ROOT else "",
+        "title": meta.get("title", base.name),
+        "type": t,
+        "path": base.relative_to(CONTENT_ROOT).as_posix() if base != CONTENT_ROOT else "",
+        "children": build_tree(base, t),
+    }
+
+
 def read_markdown(markdown_path: Path) -> str:
     with markdown_path.open("r", encoding="utf-8") as f:
         return f.read()

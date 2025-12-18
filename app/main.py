@@ -123,6 +123,7 @@ async def view_page(request: Request, path: str, tab: Optional[str] = None):
             content_html = render_markdown(wiki_fs.read_markdown(md_file))
 
     children = wiki_fs.list_children(decoded_path)
+    subtree = wiki_fs.build_subtree(decoded_path)
 
     context = {
         "request": request,
@@ -134,6 +135,7 @@ async def view_page(request: Request, path: str, tab: Optional[str] = None):
         "active_tab": active_tab,
         "has_index": has_index,
         "children": children,
+        "subtree": subtree,
         **shared_context(decoded_path, entity_type),
     }
     return templates.TemplateResponse("view.html", context)

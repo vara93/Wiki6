@@ -1,5 +1,31 @@
 {% extends "base.html" %}
 {% block content %}
+{% macro render_tree(node) %}
+  <div class="pl-{{ 2 if node.path else 0 }}">
+    {% if node.path %}
+      <a href="/view/{{ node.path }}" class="flex items-center gap-2 text-sm text-slate-200 hover:text-accent">
+        {% set icon_map = {
+          "company":"building-2",
+          "dc":"server",
+          "section":"folder",
+          "document":"file-text",
+          "service":"layers",
+          "server":"cpu",
+          "network":"network"
+        } %}
+        <i data-lucide="{{ icon_map.get(node.type, 'file-text') }}" class="w-4 h-4 text-accent"></i>
+        <span>{{ node.title }}</span>
+      </a>
+    {% endif %}
+    {% if node.children %}
+      <div class="pl-3 border-l border-slate-800 space-y-1 mt-1">
+        {% for c in node.children %}
+          {{ render_tree(c) }}
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% endmacro %}
 <div class="flex items-center justify-between mb-4">
   <div>
     <div class="flex items-center gap-2 text-xs text-slate-500 mb-2">
@@ -52,7 +78,8 @@
     {% endif %}
     <div class="bg-card border border-slate-800 rounded-xl p-5 shadow-lg shadow-black/30 prose prose-invert max-w-none">
       {% if active_tab == 'service-network.md' and meta.type == 'service' %}
-        {% set rows = meta.service_network.items if meta.service_network and meta.service_network.items else [] %}
+        {% set sn = meta.get('service_network', {}) if meta else {} %}
+        {% set rows = sn.get('items', []) if sn else [] %}
         <div id="service-network" data-path="{{ path }}" class="space-y-3">
           <div class="flex items-center justify-between">
             <div>
@@ -115,6 +142,15 @@
         <i data-lucide="upload" class="w-4 h-4 text-accent"></i>Загрузить файл
       </button>
     </div>
+    {% if meta.type in ['company','dc'] %}
+      <div class="bg-card border border-slate-800 rounded-xl p-4 shadow-lg shadow-black/30 space-y-2">
+        <h3 class="text-sm font-semibold text-white">Структура</h3>
+        <div class="text-xs text-slate-500">Вложенные разделы и документы</div>
+        <div class="mt-2 space-y-1">
+          {{ render_tree(subtree) }}
+        </div>
+      </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

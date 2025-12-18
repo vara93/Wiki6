@@ -316,6 +316,28 @@ document.addEventListener("DOMContentLoaded", () => {
   const modalClose = document.getElementById("modal-close");
   if (modalClose) modalClose.addEventListener("click", closeModal);
 
+  // Markdown editor preview
+  const mdEditor = document.getElementById("editor");
+  const mdPreview = document.getElementById("preview");
+  if (mdEditor && mdPreview && window.markdownit) {
+    const md = window.markdownit({
+      html: true,
+      linkify: true,
+      typographer: true,
+    });
+    const renderMd = () => {
+      mdPreview.innerHTML = md.render(mdEditor.value);
+      if (window.mermaid) {
+        window.mermaid.init(undefined, mdPreview.querySelectorAll(".language-mermaid"));
+      }
+      if (window.hljs) {
+        mdPreview.querySelectorAll("pre code").forEach((block) => window.hljs.highlightElement(block));
+      }
+    };
+    mdEditor.addEventListener("input", renderMd);
+    renderMd();
+  }
+
   if (createForm) {
     createForm.addEventListener("submit", async (e) => {
       e.preventDefault();
