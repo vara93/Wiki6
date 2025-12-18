@@ -1,0 +1,28 @@
+<div class="space-y-2">
+  {% for company in tree %}
+    <div class="bg-slate-900/50 rounded-lg border border-slate-800">
+      <button class="w-full text-left px-3 py-2 flex items-center justify-between text-sm text-slate-200" data-toggle="#node-{{ company.path | replace('/','-') }}">
+        <span class="flex items-center gap-2">
+          <i data-lucide="building-2" class="w-4 h-4 text-accent"></i>
+          {{ company.title }}
+        </span>
+        <i class="icon w-4 h-4 text-slate-400" data-lucide="chevron-right"></i>
+      </button>
+      <div id="node-{{ company.path | replace('/','-') }}" class="pl-4 pb-2 {% if not loop.first %}hidden{% endif %}">
+        {% for dc in company.children %}
+          <div class="mt-1">
+            <div class="flex items-center gap-2 text-xs uppercase tracking-wide text-slate-500 px-2">{{ dc.title }}</div>
+            <div class="pl-3 border-l border-slate-800 mt-2 space-y-1">
+              {% for child in dc.children %}
+                <a href="/view/{{ child.path }}" class="flex items-center gap-2 text-sm text-slate-300 hover:text-white">
+                  <i data-lucide="folder" class="w-4 h-4 text-slate-500"></i>
+                  {{ child.title }}
+                </a>
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endfor %}
+</div>
