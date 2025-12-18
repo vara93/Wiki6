@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ru" class="h-full bg-slate-950">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ meta.title if meta else "Wiki" }} - Internal Wiki</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            surface: "#0f172a",
+            card: "#111827",
+            accent: "#00b5e2"
+          },
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif']
+          }
+        }
+      },
+      darkMode: "class"
+    };
+  </script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/markdown-it/14.0.0/markdown-it.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>mermaid.initialize({startOnLoad:true, theme:'dark'});</script>
+  <style>
+    .prose pre { background-color: #0b1224; border: 1px solid #1f2937; }
+    .admonition { border-radius: 12px; padding: 12px 14px; border: 1px solid #1f2937; background-color: #0b1224; }
+    .admonition-title { font-weight: 600; color: #38bdf8; }
+    .admonition.note { border-color: #38bdf8; }
+    .admonition.warning { border-color: #f97316; }
+    .admonition.danger { border-color: #ef4444; }
+  </style>
+</head>
+<body class="h-full text-slate-100 bg-slate-950 font-sans" data-current-path="{{ current_path if current_path is defined else '' }}" data-current-type="{{ current_type if current_type is defined else 'root' }}">
+  <div class="flex h-full">
+    <aside class="w-64 bg-card border-r border-slate-800 p-4 overflow-y-auto hidden md:block">
+      <div class="flex items-center gap-2 text-slate-300 font-semibold mb-4">
+        <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+        Internal Wiki
+      </div>
+      {% include "partials/sidebar.html" %}
+    </aside>
+    <div class="flex-1 flex flex-col">
+      <header class="bg-card border-b border-slate-800 px-6 py-3 flex items-center gap-4">
+        <a href="/" class="text-slate-300 font-semibold hover:text-white transition">Главная</a>
+        <form action="/search" method="get" class="flex-1">
+          <div class="relative">
+            <input type="search" name="q" placeholder="Поиск..." value="{{ query if query else '' }}" class="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent/50">
+            <span class="absolute right-3 top-2.5 text-slate-500 text-xs">⌘K</span>
+          </div>
+        </form>
+        <div class="relative">
+          <button id="create-menu-btn" class="px-3 py-2 rounded-lg bg-accent/20 text-accent border border-accent/40 hover:border-accent flex items-center gap-2">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            Создать
+          </button>
+          <div id="create-menu" class="absolute right-0 mt-2 w-56 bg-card border border-slate-800 rounded-xl shadow-xl shadow-black/40 hidden z-20">
+            <button class="w-full px-3 py-2 text-left hover:bg-slate-900 flex items-center gap-2 text-sm text-slate-200" data-create-type="company">
+              <i data-lucide="building-2" class="w-4 h-4 text-accent"></i>Организацию
+            </button>
+            <button class="w-full px-3 py-2 text-left hover:bg-slate-900 flex items-center gap-2 text-sm text-slate-200" data-create-type="dc">
+              <i data-lucide="server" class="w-4 h-4 text-accent"></i>ЦОД
+            </button>
+            <button class="w-full px-3 py-2 text-left hover:bg-slate-900 flex items-center gap-2 text-sm text-slate-200" data-create-type="section">
+              <i data-lucide="folder" class="w-4 h-4 text-accent"></i>Раздел
+            </button>
+            <button class="w-full px-3 py-2 text-left hover:bg-slate-900 flex items-center gap-2 text-sm text-slate-200" data-create-type="document">
+              <i data-lucide="file-text" class="w-4 h-4 text-accent"></i>Документ
+            </button>
+            <button class="w-full px-3 py-2 text-left hover:bg-slate-900 flex items-center gap-2 text-sm text-slate-200" data-create-type="service">
+              <i data-lucide="grid" class="w-4 h-4 text-accent"></i>Сервис
+            </button>
+            <button class="w-full px-3 py-2 text-left hover:bg-slate-900 flex items-center gap-2 text-sm text-slate-200" data-create-type="upload">
+              <i data-lucide="upload" class="w-4 h-4 text-accent"></i>Загрузить файл
+            </button>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-slate-400">
+          <span class="px-2 py-1 rounded-lg bg-slate-800 border border-slate-700">Dark</span>
+          <span class="px-2 py-1 rounded-lg bg-slate-800 border border-slate-700">VMware-like</span>
+        </div>
+      </header>
+      <main class="flex-1 overflow-y-auto bg-surface">
+        <div class="max-w-7xl mx-auto p-6">
+          {% block content %}{% endblock %}
+        </div>
+      </main>
+    </div>
+  </div>
+  {% include "partials/modals.html" %}
+  <script src="/static/main.js"></script>
+  <script>
+    lucide.createIcons();
+  </script>
+</body>
+</html>

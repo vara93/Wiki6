@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+{% block content %}
+{% macro render_tree(node) %}
+  <div class="pl-{{ 2 if node.path else 0 }}">
+    {% if node.path %}
+      <a href="/view/{{ node.path }}" class="flex items-center gap-2 text-sm text-slate-200 hover:text-accent">
+        {% set icon_map = {
+          "company":"building-2",
+          "dc":"server",
+          "section":"folder",
+          "document":"file-text",
+          "service":"layers",
+          "server":"cpu",
+          "network":"network"
+        } %}
+        <i data-lucide="{{ icon_map.get(node.type, 'file-text') }}" class="w-4 h-4 text-accent"></i>
+        <span>{{ node.title }}</span>
+      </a>
+    {% endif %}
+    {% if node.children %}
+      <div class="pl-3 border-l border-slate-800 space-y-1 mt-1">
+        {% for c in node.children %}
+          {{ render_tree(c) }}
+        {% endfor %}
+      </div>
+    {% endif %}
+  </div>
+{% endmacro %}
+<div class="flex items-center justify-between mb-4">
+  <div>
+    <div class="flex items-center gap-2 text-xs text-slate-500 mb-2">
+      {% for crumb in breadcrumbs %}
+        {% if not loop.first %}
+          <span class="text-slate-700">/</span>
+        {% endif %}
+        {% if loop.first %}
+          <a href="/" class="hover:text-accent">{{ crumb.title }}</a>
+        {% else %}
+          <a href="/view/{{ crumb.path }}" class="hover:text-accent">{{ crumb.title }}</a>
+        {% endif %}
+      {% endfor %}
+    </div>
+    <div class="text-2xl font-semibold text-white flex items-center gap-3">
+      {% set icon_map = {
+        "company":"building-2",
+        "dc":"server",
+        "section":"folder",
+        "document":"file-text",
+        "service":"layers",
+        "server":"cpu",
+        "network":"network"
+      } %}
+      <i data-lucide="{{ icon_map.get(meta.type, 'file-text') }}" class="w-6 h-6 text-accent"></i>
+      {{ meta.title if meta else path }}
+      <span class="px-2 py-1 text-xs rounded-lg bg-slate-900 border border-slate-800 uppercase text-slate-400">{{ meta.type if meta else "" }}</span>
+    </div>
+  </div>
+  <div class="flex gap-2">
+    {% if service_tabs %}
+      <a href="/edit/{{ path }}?tab={{ active_tab }}" class="px-3 py-2 rounded-lg bg-accent/20 text-accent border border-accent/40 hover:border-accent">Редактировать вкладку</a>
+    {% else %}
+      <a href="/edit/{{ path }}" class="px-3 py-2 rounded-lg bg-accent/20 text-accent border border-accent/40 hover:border-accent">Редактировать</a>
+    {% endif %}
+    <button class="px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:border-rose-500 hover:text-rose-300" data-trash="{{ path }}">В корзину</button>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+  <div class="lg:col-span-3 space-y-4">
+    {% if service_tabs %}
+      <div class="flex flex-wrap gap-2 mb-2">
+        {% for tab in service_tabs %}
+          <a href="/view/{{ path }}?tab={{ tab.key }}" class="px-3 py-2 rounded-lg border text-sm {% if tab.key == active_tab %}border-accent text-accent bg-accent/10{% else %}border-slate-800 text-slate-300 hover:border-accent/40{% endif %}">
+            {{ tab.title }}
+          </a>
+        {% endfor %}
+      </div>
+    {% endif %}
+    <div class="bg-card border border-slate-800 rounded-xl p-5 shadow-lg shadow-black/30 prose prose-invert max-w-none">
+      {% if active_tab == 'service-network.md' and meta.type == 'service' %}
+        {% set sn = meta.get('service_network', {}) if meta else {} %}
+        {% set rows = sn.get('items', []) if sn else [] %}
+        <div id="service-network" data-path="{{ path }}" class="space-y-3">
+          <div class="flex items-center justify-between">
+            <div>
+              <div class="text-lg font-semibold text-white">Сеть сервиса</div>
+              <div class="text-sm text-slate-400">IP/Mask/Gateway/DNS для компонентов</div>
+            </div>
+            <button id="add-row" class="px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 hover:border-accent/50" type="button">Добавить</button>
+          </div>
+          <div class="space-y-2">
+            <div class="grid grid-cols-5 gap-2 text-xs text-slate-400">
+              <span>Name</span><span>IP</span><span>Mask</span><span>Gateway</span><span>DNS</span>
+            </div>
+            <div id="sn-rows" class="space-y-2" data-rows='{{ rows | tojson }}'></div>
+          </div>
+          <div class="flex justify-end gap-2">
+            <button id="save-sn" class="px-4 py-2 rounded-lg bg-accent/20 text-accent border border-accent/40 hover:border-accent" type="button">Save</button>
+          </div>
+          <div id="sn-error" class="text-xs text-rose-300 hidden"></div>
+        </div>
+      {% elif content_html %}
+        {{ content_html | safe }}
+      {% else %}
+        <div class="text-center py-10">
+          <div class="text-lg font-semibold text-white mb-2">Контент ещё не создан</div>
+          <div class="text-sm text-slate-400 mb-4">Создайте index.md{% if service_tabs %} или вкладки сервиса{% endif %}.</div>
+          <div class="flex justify-center gap-2">
+            <a href="/edit/{{ path }}" class="px-4 py-2 rounded-lg bg-accent/20 text-accent border border-accent/40 hover:border-accent">Создать index.md</a>
+          </div>
+        </div>
+        {% if children %}
+          <div class="mt-6">
+            <div class="text-sm text-slate-400 mb-2">Содержимое раздела</div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {% for child in children %}
+                <a href="/view/{{ child.path }}" class="px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-accent/40 flex items-center gap-2">
+                  <i data-lucide="{{ icon_map.get(child.type, 'file-text') }}" class="w-4 h-4 text-accent"></i>
+                  <span class="text-slate-200">{{ child.title }}</span>
+                  <span class="text-[10px] uppercase text-slate-500 border border-slate-800 px-1 rounded">{{ child.type }}</span>
+                </a>
+              {% endfor %}
+            </div>
+          </div>
+        {% endif %}
+      {% endif %}
+    </div>
+    {% if meta.type in ['company','dc'] %}
+      <div class="bg-card border border-slate-800 rounded-xl p-5 shadow-lg shadow-black/30">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <div class="text-sm text-slate-400">Структура</div>
+            <div class="text-lg font-semibold text-white">Вложенные разделы и документы</div>
+          </div>
+        </div>
+        <div class="space-y-1">
+          {{ render_tree(subtree) }}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="space-y-4">
+    <div class="bg-card border border-slate-800 rounded-xl p-4 shadow-lg shadow-black/30 space-y-2">
+      <h3 class="text-sm font-semibold text-white mb-1">Управление</h3>
+      <button class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 hover:border-accent/50 flex items-center gap-2" data-open-create="section" data-parent="{{ path }}">
+        <i data-lucide="folder-plus" class="w-4 h-4 text-accent"></i>Создать раздел
+      </button>
+      <button class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 hover:border-accent/50 flex items-center gap-2" data-open-create="document" data-parent="{{ path }}">
+        <i data-lucide="file-plus" class="w-4 h-4 text-accent"></i>Создать документ
+      </button>
+      <button class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 hover:border-accent/50 flex items-center gap-2" data-open-create="service" data-parent="{{ path }}">
+        <i data-lucide="grid" class="w-4 h-4 text-accent"></i>Создать сервис
+      </button>
+      <button class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 hover:border-accent/50 flex items-center gap-2" data-open-upload data-parent="{{ path }}">
+        <i data-lucide="upload" class="w-4 h-4 text-accent"></i>Загрузить файл
+      </button>
+    </div>
+    {% if meta.type in ['company','dc'] %}
+      <div class="bg-card border border-slate-800 rounded-xl p-4 shadow-lg shadow-black/30 space-y-2">
+        <h3 class="text-sm font-semibold text-white">Структура</h3>
+        <div class="text-xs text-slate-500">Вложенные разделы и документы</div>
+        <div class="mt-2 space-y-1">
+          {{ render_tree(subtree) }}
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
