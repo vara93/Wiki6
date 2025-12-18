@@ -22,6 +22,16 @@ def _save_index(entries: List[Dict]) -> None:
         json.dump(entries, f, ensure_ascii=False, indent=2)
 
 
+def _index_entry(rel_folder: str, meta: Dict, filename: str | None, content: str) -> Dict:
+    return {
+        "path": rel_folder,
+        "file": filename or "",
+        "title": meta.get("title", rel_folder.split("/")[-1] if rel_folder else ""),
+        "type": meta.get("type", "document"),
+        "content": content,
+    }
+
+
 def build_index() -> None:
     entries: List[Dict] = []
     for root, dirs, files in os.walk(wiki_fs.CONTENT_ROOT):
@@ -29,20 +39,12 @@ def build_index() -> None:
         folder = Path(root)
         rel_folder = folder.relative_to(wiki_fs.CONTENT_ROOT).as_posix()
         meta = wiki_fs.load_meta(folder)
-        title = meta.get("title", folder.name)
-        entry_type = meta.get("type", "document")
+        if not files or not any(f.endswith(".md") for f in files):
+            entries.append(_index_entry(rel_folder, meta, None, ""))
         for file in files:
             if file.endswith(".md"):
                 content = wiki_fs.read_markdown(folder / file)
-                entries.append(
-                    {
-                        "path": rel_folder,
-                        "file": file,
-                        "title": title,
-                        "type": entry_type,
-                        "content": content,
-                    }
-                )
+                entries.append(_index_entry(rel_folder, meta, file, content))
     _save_index(entries)
 
 
@@ -54,19 +56,13 @@ def update_index_for_path(rel_path: str) -> None:
         _save_index(entries)
         return
     meta = wiki_fs.load_meta(folder)
-    title = meta.get("title", folder.name)
-    entry_type = meta.get("type", "document")
+    has_md = False
     for file in folder.iterdir():
         if file.is_file() and file.name.endswith(".md"):
-            entries.append(
-                {
-                    "path": rel_path,
-                    "file": file.name,
-                    "title": title,
-                    "type": entry_type,
-                    "content": wiki_fs.read_markdown(file),
-                }
-            )
+            has_md = True
+            entries.append(_index_entry(rel_path, meta, file.name, wiki_fs.read_markdown(file)))
+    if not has_md:
+        entries.append(_index_entry(rel_path, meta, None, ""))
     _save_index(entries)
 
 

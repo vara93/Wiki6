@@ -28,21 +28,31 @@
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-lg font-semibold text-white">Компании</h2>
       </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {% for company in companies %}
-          <a href="/view/{{ company.path }}" class="p-4 rounded-xl bg-card border border-slate-800 hover:border-accent/50 transition shadow-lg shadow-black/30">
-            <div class="flex items-center gap-3">
-              <div class="p-2 rounded-lg bg-slate-900 border border-slate-800">
-                <i data-lucide="building" class="w-5 h-5 text-accent"></i>
+      {% if companies %}
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {% for company in companies %}
+            <a href="/view/{{ company.path }}" class="p-4 rounded-xl bg-card border border-slate-800 hover:border-accent/50 transition shadow-lg shadow-black/30">
+              <div class="flex items-center gap-3">
+                <div class="p-2 rounded-lg bg-slate-900 border border-slate-800">
+                  <i data-lucide="building" class="w-5 h-5 text-accent"></i>
+                </div>
+                <div>
+                  <div class="text-white font-semibold">{{ company.title }}</div>
+                  <div class="text-xs text-slate-400 uppercase tracking-wide">{{ company.type }}</div>
+                </div>
               </div>
-              <div>
-                <div class="text-white font-semibold">{{ company.title }}</div>
-                <div class="text-xs text-slate-400 uppercase tracking-wide">{{ company.type }}</div>
-              </div>
-            </div>
-          </a>
-        {% endfor %}
-      </div>
+            </a>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="rounded-xl border border-dashed border-slate-700 bg-slate-900/40 p-6 text-center space-y-3">
+          <div class="text-lg font-semibold text-white">Пока пусто</div>
+          <div class="text-sm text-slate-400">Создайте первую организацию, чтобы начать.</div>
+          <div>
+            <button class="px-4 py-2 rounded-lg bg-accent/20 text-accent border border-accent/50 hover:border-accent" data-open-create="company" data-parent="">Создать организацию</button>
+          </div>
+        </div>
+      {% endif %}
     </div>
     <div>
       <div class="bg-card border border-slate-800 rounded-xl p-4 shadow-lg shadow-black/30">

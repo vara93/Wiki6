@@ -40,7 +40,7 @@
     .admonition.danger { border-color: #ef4444; }
   </style>
 </head>
-<body class="h-full text-slate-100 bg-slate-950 font-sans">
+<body class="h-full text-slate-100 bg-slate-950 font-sans" data-current-path="{{ current_path if current_path is defined else '' }}">
   <div class="flex h-full">
     <aside class="w-64 bg-card border-r border-slate-800 p-4 overflow-y-auto hidden md:block">
       <div class="flex items-center gap-2 text-slate-300 font-semibold mb-4">
@@ -58,6 +58,32 @@
             <span class="absolute right-3 top-2.5 text-slate-500 text-xs">⌘K</span>
           </div>
         </form>
+        <div class="relative">
+          <button id="create-menu-btn" class="px-3 py-2 rounded-lg bg-accent/20 text-accent border border-accent/40 hover:border-accent flex items-center gap-2">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            Создать
+          </button>
+          <div id="create-menu" class="absolute right-0 mt-2 w-56 bg-card border border-slate-800 rounded-xl shadow-xl shadow-black/40 hidden z-20">
+            <button class="w-full px-3 py-2 text-left hover:bg-slate-900 flex items-center gap-2 text-sm text-slate-200" data-create-type="company">
+              <i data-lucide="building-2" class="w-4 h-4 text-accent"></i>Организацию
+            </button>
+            <button class="w-full px-3 py-2 text-left hover:bg-slate-900 flex items-center gap-2 text-sm text-slate-200" data-create-type="dc">
+              <i data-lucide="server" class="w-4 h-4 text-accent"></i>ЦОД
+            </button>
+            <button class="w-full px-3 py-2 text-left hover:bg-slate-900 flex items-center gap-2 text-sm text-slate-200" data-create-type="section">
+              <i data-lucide="folder" class="w-4 h-4 text-accent"></i>Раздел
+            </button>
+            <button class="w-full px-3 py-2 text-left hover:bg-slate-900 flex items-center gap-2 text-sm text-slate-200" data-create-type="document">
+              <i data-lucide="file-text" class="w-4 h-4 text-accent"></i>Документ
+            </button>
+            <button class="w-full px-3 py-2 text-left hover:bg-slate-900 flex items-center gap-2 text-sm text-slate-200" data-create-type="service">
+              <i data-lucide="grid" class="w-4 h-4 text-accent"></i>Сервис
+            </button>
+            <button class="w-full px-3 py-2 text-left hover:bg-slate-900 flex items-center gap-2 text-sm text-slate-200" data-create-type="upload">
+              <i data-lucide="upload" class="w-4 h-4 text-accent"></i>Загрузить файл
+            </button>
+          </div>
+        </div>
         <div class="flex items-center gap-2 text-xs text-slate-400">
           <span class="px-2 py-1 rounded-lg bg-slate-800 border border-slate-700">Dark</span>
           <span class="px-2 py-1 rounded-lg bg-slate-800 border border-slate-700">VMware-like</span>
@@ -70,6 +96,7 @@
       </main>
     </div>
   </div>
+  {% include "partials/modals.html" %}
   <script src="/static/main.js"></script>
   <script>
     lucide.createIcons();

@@ -3,7 +3,7 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 CONTENT_ROOT = Path(os.environ.get("WIKI_CONTENT_ROOT", "/opt/wiki/content")).resolve()
 TRASH_ROOT = CONTENT_ROOT / ".trash"
@@ -22,6 +22,15 @@ def ensure_content_root() -> None:
 
 def _now_iso() -> str:
     return datetime.utcnow().isoformat() + "Z"
+
+
+def validate_system_name(name: str) -> str:
+    if not name or any(ch in name for ch in ["/", "\\", ".."]):
+        raise WikiPathError("Invalid name")
+    allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+    if not set(name) <= allowed:
+        raise WikiPathError("Name must contain only letters, numbers, dash or underscore")
+    return name
 
 
 def resolve_path(rel_path: str, allow_nonexistent: bool = True) -> Path:
@@ -108,12 +117,15 @@ def write_markdown(markdown_path: Path, content: str) -> None:
     save_meta(markdown_path.parent, load_meta(markdown_path.parent))
 
 
-def create_folder(parent_rel: str, name: str, type_value: str = "document") -> Path:
+def create_folder(parent_rel: str, name: str, type_value: str = "document", title: str | None = None) -> Path:
+    validate_system_name(name)
     parent = resolve_path(parent_rel)
     parent.mkdir(parents=True, exist_ok=True)
     new_folder = parent / name
     new_folder.mkdir(parents=False, exist_ok=False)
-    meta = load_meta(new_folder) or default_meta(name, type_value)
+    meta = load_meta(new_folder) or default_meta(title or name, type_value)
+    meta["title"] = title or meta.get("title", name)
+    meta["type"] = type_value
     save_meta(new_folder, meta)
     return new_folder
 
@@ -123,7 +135,7 @@ def create_markdown_page(folder: Path, filename: str, title: str, body: str) -> 
     write_markdown(folder / filename, f"# {title}\n\n{body}")
 
 
-def create_service_template(folder: Path) -> None:
+def create_service_template(folder: Path, title: str) -> None:
     templates: List[Tuple[str, str]] = [
         ("overview.md", "Обзор"),
         ("passport.md", "Паспорт"),
@@ -133,11 +145,11 @@ def create_service_template(folder: Path) -> None:
         ("docs.md", "Документы"),
         ("service-network.md", "Сеть сервиса"),
     ]
-    for filename, title in templates:
-        create_markdown_page(folder, filename, title, f"Контент раздела «{title}».")
+    for filename, tab_title in templates:
+        create_markdown_page(folder, filename, tab_title, f"Контент раздела «{tab_title}» сервиса {title}.")
 
 
-def create_server_template(folder: Path) -> None:
+def create_server_template(folder: Path, title: str) -> None:
     body = "\n".join(
         [
             "| Параметр | Значение |",
@@ -150,10 +162,10 @@ def create_server_template(folder: Path) -> None:
             "| Бэкапы |  |",
         ]
     )
-    create_markdown_page(folder, "index.md", "Паспорт сервера", body)
+    create_markdown_page(folder, "index.md", title or "Паспорт сервера", body)
 
 
-def create_network_template(folder: Path) -> None:
+def create_network_template(folder: Path, title: str) -> None:
     body = "\n".join(
         [
             "## Сегменты",
@@ -168,24 +180,33 @@ def create_network_template(folder: Path) -> None:
             "- ",
         ]
     )
-    create_markdown_page(folder, "index.md", "Сеть", body)
+    create_markdown_page(folder, "index.md", title or "Сеть", body)
 
 
-def create_document_template(folder: Path) -> None:
-    body = "Описание документа. Добавьте вложения в папку `assets/` или рядом."
-    create_markdown_page(folder, "index.md", "Документ", body)
+def create_document_template(folder: Path, title: str) -> None:
+    body = "\n".join(
+        [
+            "## Цель",
+            "",
+            "## Описание",
+            "",
+            "## Вложения",
+            "- Добавьте файлы в папку `assets/`",
+        ]
+    )
+    create_markdown_page(folder, "index.md", title or "Документ", body)
 
 
-def create_template(parent_rel: str, name: str, type_value: str) -> Path:
-    folder = create_folder(parent_rel, name, type_value)
+def create_page(parent_rel: str, name: str, title: str, type_value: str) -> Path:
+    folder = create_folder(parent_rel, name, type_value, title)
     if type_value == "service":
-        create_service_template(folder)
+        create_service_template(folder, title)
     elif type_value == "server":
-        create_server_template(folder)
+        create_server_template(folder, title)
     elif type_value == "network":
-        create_network_template(folder)
+        create_network_template(folder, title)
     else:
-        create_document_template(folder)
+        create_document_template(folder, title)
     return folder
 
 
@@ -203,13 +224,13 @@ def move_to_trash(target_rel: str) -> Path:
     target = resolve_path(target_rel, allow_nonexistent=False)
     timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
     relative = target.relative_to(CONTENT_ROOT)
-    trash_destination = TRASH_ROOT / f"{timestamp}_{relative.as_posix().replace('/', '_')}"
+    trash_destination = TRASH_ROOT / timestamp / relative
     trash_destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.move(str(target), str(trash_destination))
     return trash_destination
 
 
-def list_recent_changes(limit: int = 8) -> List[Dict]:
+def list_recent_changes(limit: int = 10) -> List[Dict]:
     records: List[Tuple[datetime, Dict]] = []
     for root, dirs, files in os.walk(CONTENT_ROOT):
         dirs[:] = [d for d in dirs if not d.startswith(".")]
@@ -251,14 +272,14 @@ def breadcrumbs(rel_path: str) -> List[Dict]:
 def bootstrap_demo() -> None:
     if any(CONTENT_ROOT.iterdir()):
         return
-    company_a = create_folder("", "Company_A", "company")
-    create_folder("Company_A", "DC_Prokhorova", "dc")
-    rds = create_template("Company_A/DC_Prokhorova", "RDS_Farm", "service")
+    company_a = create_folder("", "Company_A", "company", "Компания A")
+    dc_a = create_folder("Company_A", "DC_Prokhorova", "dc", "DC Prokhorova")
+    rds = create_page("Company_A/DC_Prokhorova", "RDS_Farm", "RDS Farm", "service")
     save_meta(rds, {"title": "RDS Farm", "type": "service"})
-    exch = create_template("Company_A/DC_Prokhorova", "EXCH_DAG", "service")
+    exch = create_page("Company_A/DC_Prokhorova", "EXCH_DAG", "Exchange DAG", "service")
     save_meta(exch, {"title": "Exchange DAG", "type": "service"})
 
-    company_b = create_folder("", "Company_B", "company")
-    create_folder("Company_B", "DC_Mashkova", "dc")
-    save_meta(company_a, {"title": "Компания A", "type": "company"})
-    save_meta(company_b, {"title": "Компания B", "type": "company"})
+    company_b = create_folder("", "Company_B", "company", "Компания B")
+    dc_b = create_folder("Company_B", "DC_Mashkova", "dc", "DC Mashkova")
+    for node in [company_a, company_b, dc_a, dc_b]:
+        save_meta(node, load_meta(node))

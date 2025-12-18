@@ -1,10 +1,11 @@
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel
 import markdown
 
 from . import search, wiki_fs
@@ -31,8 +32,8 @@ def render_markdown(text: str) -> str:
     )
 
 
-def shared_context():
-    return {"tree": wiki_fs.build_tree(), "companies": wiki_fs.list_companies()}
+def shared_context(current_path: str = ""):
+    return {"tree": wiki_fs.build_tree(), "companies": wiki_fs.list_companies(), "current_path": current_path}
 
 
 @app.on_event("startup")
@@ -47,7 +48,7 @@ async def home(request: Request):
     context = {
         "request": request,
         "recent": wiki_fs.list_recent_changes(),
-        **shared_context(),
+        **shared_context(""),
     }
     return templates.TemplateResponse("index.html", context)
 
@@ -111,7 +112,7 @@ async def view_page(request: Request, path: str, tab: Optional[str] = None):
         "content_html": content_html,
         "service_tabs": service_tabs,
         "active_tab": active_tab,
-        **shared_context(),
+        **shared_context(path),
     }
     return templates.TemplateResponse("view.html", context)
 
@@ -137,9 +138,77 @@ async def edit_page(request: Request, path: str, tab: Optional[str] = None):
         "file_name": md_path.name,
         "content": content,
         "breadcrumbs": breadcrumbs,
-        **shared_context(),
+        **shared_context(parent.relative_to(wiki_fs.CONTENT_ROOT).as_posix()),
     }
     return templates.TemplateResponse("edit.html", context)
+
+
+class MkdirPayload(BaseModel):
+    parent: str = ""
+    name: str
+    title: str
+    type_value: str
+
+
+class CreatePagePayload(BaseModel):
+    parent: str = ""
+    name: str
+    title: str
+    type_value: str
+
+
+class SavePayload(BaseModel):
+    path: str
+    file_name: str
+    content: str
+
+
+class TrashPayload(BaseModel):
+    path: str
+
+
+@app.post("/api/mkdir")
+async def api_mkdir(payload: MkdirPayload):
+    try:
+        folder = wiki_fs.create_folder(payload.parent or "", payload.name, payload.type_value, payload.title)
+    except FileExistsError:
+        raise HTTPException(status_code=400, detail="Узел уже существует")
+    search.update_index_for_path(folder.relative_to(wiki_fs.CONTENT_ROOT).as_posix())
+    return {"path": folder.relative_to(wiki_fs.CONTENT_ROOT).as_posix(), "title": payload.title}
+
+
+@app.post("/api/create-page")
+async def api_create_page(payload: CreatePagePayload):
+    try:
+        folder = wiki_fs.create_page(payload.parent or "", payload.name, payload.title, payload.type_value)
+    except FileExistsError:
+        raise HTTPException(status_code=400, detail="Узел уже существует")
+    search.update_index_for_path(folder.relative_to(wiki_fs.CONTENT_ROOT).as_posix())
+    return {"path": folder.relative_to(wiki_fs.CONTENT_ROOT).as_posix(), "title": payload.title}
+
+
+@app.post("/api/save")
+async def api_save(payload: SavePayload):
+    target_folder = wiki_fs.resolve_path(payload.path or "", allow_nonexistent=False)
+    md_path = target_folder / payload.file_name
+    wiki_fs.write_markdown(md_path, payload.content)
+    search.update_index_for_path(payload.path)
+    return {"saved": True, "path": payload.path, "file": payload.file_name}
+
+
+@app.post("/api/upload")
+async def api_upload(path: str = Form(...), file: UploadFile = File(...)):
+    data = await file.read()
+    dest = wiki_fs.upload_file(path or "", file.filename, data)
+    search.update_index_for_path(path)
+    return {"uploaded": dest.name, "url": f"/content/{dest.relative_to(wiki_fs.CONTENT_ROOT)}"}
+
+
+@app.post("/api/trash")
+async def api_trash(payload: TrashPayload):
+    moved = wiki_fs.move_to_trash(payload.path)
+    search.update_index_for_path(payload.path)
+    return {"trashed": payload.path, "moved_to": moved.as_posix()}
 
 
 @app.post("/save/{path:path}")
@@ -149,41 +218,6 @@ async def save_page(path: str, file_name: str = Form(...), content: str = Form(.
     wiki_fs.write_markdown(md_path, content)
     search.update_index_for_path(path)
     return RedirectResponse(url=f"/view/{path}", status_code=303)
-
-
-@app.post("/mkdir/{path:path}")
-async def make_directory(path: str, name: str = Form(...)):
-    try:
-        folder = wiki_fs.create_folder(path or "", name)
-    except FileExistsError:
-        raise HTTPException(status_code=400, detail="Узел уже существует")
-    search.update_index_for_path(str(folder.relative_to(wiki_fs.CONTENT_ROOT)))
-    return RedirectResponse(url=f"/view/{folder.relative_to(wiki_fs.CONTENT_ROOT)}", status_code=303)
-
-
-@app.post("/create/{path:path}")
-async def create_page(path: str, name: str = Form(...), type_value: str = Form(...)):
-    try:
-        folder = wiki_fs.create_template(path or "", name, type_value)
-        wiki_fs.save_meta(folder, {"title": name, "type": type_value})
-    except FileExistsError:
-        raise HTTPException(status_code=400, detail="Узел уже существует")
-    search.update_index_for_path(folder.relative_to(wiki_fs.CONTENT_ROOT).as_posix())
-    return RedirectResponse(url=f"/view/{folder.relative_to(wiki_fs.CONTENT_ROOT)}", status_code=303)
-
-
-@app.post("/upload/{path:path}")
-async def upload_attachment(path: str, file: UploadFile = File(...)):
-    data = await file.read()
-    dest = wiki_fs.upload_file(path or "", file.filename, data)
-    return {"uploaded": dest.name, "url": f"/content/{dest.relative_to(wiki_fs.CONTENT_ROOT)}"}
-
-
-@app.post("/trash/{path:path}")
-async def trash(path: str):
-    moved = wiki_fs.move_to_trash(path)
-    search.build_index()
-    return {"trashed": moved.name}
 
 
 @app.get("/search", response_class=HTMLResponse)
