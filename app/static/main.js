@@ -47,6 +47,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const createType = document.getElementById("create-type");
   const createError = document.getElementById("create-error");
   const createGenerate = document.getElementById("create-generate");
+  const parentSelect = document.getElementById("parent-select");
   const uploadParent = document.getElementById("upload-parent");
   const uploadFile = document.getElementById("upload-file");
 
@@ -57,6 +58,13 @@ document.addEventListener("DOMContentLoaded", () => {
     company: ["dc"],
     dc: ["section", "document", "service", "server", "network"],
     section: ["section", "document", "service", "server", "network"],
+  };
+  const getDefaultParent = () => {
+    if (["document", "service", "server", "network"].includes(currentType) && currentPath.includes("/")) {
+      return currentPath.split("/").slice(0, -1).join("/");
+    }
+    if (["company", "dc", "section"].includes(currentType)) return currentPath;
+    return "";
   };
 
   const hideMenu = () => menu && menu.classList.add("hidden");
@@ -146,6 +154,8 @@ document.addEventListener("DOMContentLoaded", () => {
     return allowed;
   };
 
+  let currentTree = [];
+
   const renderSidebar = async () => {
     const container = document.getElementById("sidebar-tree");
     if (!container) return;
@@ -154,18 +164,21 @@ document.addEventListener("DOMContentLoaded", () => {
       const res = await fetch("/api/tree");
       const data = await res.json();
       if (!data.ok) throw new Error("tree fetch error");
+      currentTree = data.tree || [];
       const renderNodes = (nodes, level = 0) => {
         const items = nodes
           .map((n) => {
             const children = n.children && n.children.length ? renderNodes(n.children, level + 1) : "";
-            const icon =
-              n.type === "company"
-                ? "building-2"
-                : n.type === "dc"
-                ? "server"
-                : n.type === "section"
-                ? "folder"
-                : "file-text";
+            const iconMap = {
+              company: "building-2",
+              dc: "server",
+              section: "folder",
+              document: "file-text",
+              service: "layers",
+              server: "cpu",
+              network: "network",
+            };
+            const icon = iconMap[n.type] || "file-text";
             return `
               <div class="mt-1">
                 <a href="/view/${n.path}" class="flex items-center gap-2 px-${level > 0 ? 2 : 0} py-1 rounded hover:bg-slate-900/60">
@@ -182,10 +195,26 @@ document.addEventListener("DOMContentLoaded", () => {
       };
       container.innerHTML = renderNodes(data.tree || []);
       lucide.createIcons();
+      buildParentOptions();
     } catch (err) {
       console.error(err);
       container.innerHTML = '<div class="text-rose-400 text-xs">Ошибка загрузки дерева</div>';
     }
+  };
+  const buildParentOptions = () => {
+    if (!parentSelect) return;
+    const options = ['<option value="">/ (root)</option>'];
+    const walk = (nodes, prefix = "") => {
+      nodes.forEach((n) => {
+        options.push(`<option value="${n.path}">${prefix}/${n.title}</option>`);
+        if (n.children) walk(n.children, `${prefix}/${n.title}`);
+      });
+    };
+    walk(currentTree || []);
+    parentSelect.innerHTML = options.join("");
+    const def = getDefaultParent();
+    parentSelect.value = def;
+    createParent.value = def;
   };
 
   if (menuBtn && menu) {
@@ -220,6 +249,13 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  if (parentSelect) {
+    parentSelect.addEventListener("change", () => {
+      createParent.value = parentSelect.value;
+      contextAllowedTypes(parentSelect.value);
+    });
+  }
+
   const contextAllowedTypes = (parentPath) => {
     if (!parentPath) return applyAllowedTypes("root");
     if (parentPath === currentPath) return applyAllowedTypes(currentType);
@@ -229,10 +265,12 @@ document.addEventListener("DOMContentLoaded", () => {
   document.querySelectorAll("[data-create-type]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const type = btn.dataset.createType;
-      createParent.value = currentPath;
+      const defParent = getDefaultParent();
+      createParent.value = defParent;
+      if (parentSelect) parentSelect.value = defParent;
       createName.value = "";
       createTitle.value = "";
-      const allowed = contextAllowedTypes(currentPath);
+      const allowed = contextAllowedTypes(defParent);
       if (!allowed.includes(type)) {
         setError("Тип недоступен для выбранного узла");
         createType.value = allowed[0] || "";
@@ -251,6 +289,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const parentPath = btn.dataset.parent || currentPath;
       const desired = btn.dataset.openCreate || "section";
       createParent.value = parentPath;
+      if (parentSelect) parentSelect.value = parentPath;
       createName.value = "";
       createTitle.value = "";
       const allowed = contextAllowedTypes(parentPath);
@@ -282,6 +321,9 @@ document.addEventListener("DOMContentLoaded", () => {
       e.preventDefault();
       setError("");
       const allowed = contextAllowedTypes(createParent.value);
+      if (!createName.value) {
+        createName.value = slugify(createTitle.value || "node");
+      }
       const nameValue = createName.value.trim();
       if (!nameRegex.test(nameValue)) {
         setError("Используйте латиницу, цифры, - или _ (без пробелов)");
@@ -381,4 +423,69 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   });
+
+  const snContainer = document.getElementById("service-network");
+  if (snContainer) {
+    const rowsHolder = document.getElementById("sn-rows");
+    const addRowBtn = document.getElementById("add-row");
+    const saveBtn = document.getElementById("save-sn");
+    const errBox = document.getElementById("sn-error");
+    const path = snContainer.dataset.path;
+    const renderRows = (rows) => {
+      rowsHolder.innerHTML = "";
+      rows.forEach((row, idx) => {
+        const div = document.createElement("div");
+        div.className = "grid grid-cols-5 gap-2";
+        div.innerHTML = `
+          <input data-field="name" data-idx="${idx}" value="${row.name || ""}" class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm">
+          <input data-field="ip" data-idx="${idx}" value="${row.ip || ""}" class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm">
+          <input data-field="mask" data-idx="${idx}" value="${row.mask || ""}" class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm">
+          <input data-field="gateway" data-idx="${idx}" value="${row.gateway || ""}" class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm">
+          <input data-field="dns" data-idx="${idx}" value="${row.dns || ""}" class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm">
+        `;
+        rowsHolder.appendChild(div);
+      });
+    };
+    let rows = [];
+    try {
+      rows = JSON.parse(rowsHolder.dataset.rows || "[]");
+    } catch {
+      rows = [];
+    }
+    if (!rows.length) rows = [{ name: "", ip: "", mask: "", gateway: "", dns: "" }];
+    renderRows(rows);
+    addRowBtn.addEventListener("click", () => {
+      rows.push({ name: "", ip: "", mask: "", gateway: "", dns: "" });
+      renderRows(rows);
+    });
+    saveBtn.addEventListener("click", async () => {
+      errBox.classList.add("hidden");
+      const inputs = rowsHolder.querySelectorAll("input");
+      const collated = [];
+      inputs.forEach((inp) => {
+        const idx = Number(inp.dataset.idx);
+        const field = inp.dataset.field;
+        collated[idx] = collated[idx] || { name: "", ip: "", mask: "", gateway: "", dns: "" };
+        collated[idx][field] = inp.value;
+      });
+      try {
+        const res = await fetch("/api/service-network/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ path, items: collated }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          errBox.textContent = data.error || "Не удалось сохранить";
+          errBox.classList.remove("hidden");
+          return;
+        }
+        window.location.reload();
+      } catch (err) {
+        console.error(err);
+        errBox.textContent = "Ошибка сети";
+        errBox.classList.remove("hidden");
+      }
+    });
+  }
 });

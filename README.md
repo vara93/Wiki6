@@ -47,6 +47,18 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
 - Внутри DC или Section — Section/Document/Service/Server/Network.
 - Каждый узел: папка + `meta.json` + `index.md` (Service дополнительно вкладки `overview.md` ... `service-network.md`).
 
+### Хранение/автослаг
+- Контент: `/opt/wiki/content/<company>/<dc>/<section>/...`.
+- System Name генерируется автоматически из Title (транслит + slug), при конфликте добавляется `-2`, `-3`, ... (можно посмотреть в модалке создания).
+
+### Редактирование Markdown
+- Страница редактирования: слева Markdown (textarea), справа live preview (markdown-it + highlight.js + mermaid).
+- Поддерживаются таблицы, fenced code blocks, admonitions.
+
+### Сеть сервиса
+- Для Service вкладка “Сеть сервиса” позволяет редактировать таблицу (Name, IP, Mask, Gateway, DNS).
+- Данные сохраняются в `meta.json` (`service_network.items`) и генерируют `service-network.md`.
+
 ### Тест-кейс
 1. Создать Company «Первый Дом» через `/api/mkdir` (`parent=""`, `type="company"`).
 2. Внутри неё создать DC «Машкова» (`parent="Pervyy_Dom"` после slug).

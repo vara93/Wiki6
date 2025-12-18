@@ -83,6 +83,57 @@ def default_meta(name: str, type_value: str = "document") -> Dict:
     return {"title": name, "type": type_value, "created": _now_iso(), "updated": _now_iso()}
 
 
+def slugify(title: str) -> str:
+    translit = {
+        "а": "a",
+        "б": "b",
+        "в": "v",
+        "г": "g",
+        "д": "d",
+        "е": "e",
+        "ё": "e",
+        "ж": "zh",
+        "з": "z",
+        "и": "i",
+        "й": "y",
+        "к": "k",
+        "л": "l",
+        "м": "m",
+        "н": "n",
+        "о": "o",
+        "п": "p",
+        "р": "r",
+        "с": "s",
+        "т": "t",
+        "у": "u",
+        "ф": "f",
+        "х": "h",
+        "ц": "c",
+        "ч": "ch",
+        "ш": "sh",
+        "щ": "shch",
+        "ы": "y",
+        "э": "e",
+        "ю": "yu",
+        "я": "ya",
+    }
+    text = title.lower().strip()
+    text = "".join(translit.get(ch, ch) for ch in text)
+    text = text.replace(" ", "-")
+    out = "".join(ch for ch in text if ch.isalnum() or ch in "-_")
+    out = out.strip("-_")
+    return out or "node"
+
+
+def generate_unique_name(parent: Path, base: str) -> str:
+    candidate = base
+    counter = 2
+    while (parent / candidate).exists():
+        candidate = f"{base}-{counter}"
+        counter += 1
+    return candidate
+
+
 def node_type(folder: Path, parent_is_root: bool = False) -> str:
     if folder == CONTENT_ROOT:
         return "root"
@@ -125,11 +176,8 @@ def build_tree(base: Path = CONTENT_ROOT, parent_type: str | None = None) -> Lis
             continue
         meta = load_meta(entry)
         entry_type = meta.get("type")
-        if entry == CONTENT_ROOT:
-            entry_type = "root"
-        if parent_type is None:
-            parent_type = "root"
-        if entry_type not in allowed_children(parent_type):
+        parent_ctx = parent_type or "root"
+        if entry_type not in allowed_children(parent_ctx):
             continue
         node = {
             "name": entry.name,
@@ -171,12 +219,15 @@ def ensure_index(folder: Path, type_value: str, title: str) -> None:
     create_markdown_page(folder, "index.md", title, body)
 
 
-def create_folder(parent_rel: str, name: str, type_value: str = "document", title: str | None = None) -> Path:
-    validate_system_name(name)
+def create_folder(parent_rel: str, name: str | None, type_value: str = "document", title: str | None = None) -> Path:
     parent = resolve_path(parent_rel)
     parent_type = node_type(parent, parent == CONTENT_ROOT)
     validate_child_type(parent_type if parent_type != "root" else None, type_value)
     parent.mkdir(parents=True, exist_ok=True)
+    if not name:
+        name = slugify(title or "node")
+    name = validate_system_name(name)
+    name = generate_unique_name(parent, name)
     new_folder = parent / name
     new_folder.mkdir(parents=False, exist_ok=False)
     meta = load_meta(new_folder) or default_meta(title or name, type_value)
@@ -254,7 +305,7 @@ def create_document_template(folder: Path, title: str) -> None:
     create_markdown_page(folder, "index.md", title or "Документ", body)
 
 
-def create_page(parent_rel: str, name: str, title: str, type_value: str) -> Path:
+def create_page(parent_rel: str, name: str | None, title: str, type_value: str) -> Path:
     folder = create_folder(parent_rel, name, type_value, title)
     if type_value == "service":
         create_service_template(folder, title)
@@ -265,6 +316,21 @@ def create_page(parent_rel: str, name: str, title: str, type_value: str) -> Path
     else:
         create_document_template(folder, title)
     ensure_index(folder, type_value, title)
+    return folder
+
+
+def save_service_network(rel_path: str, items: List[Dict]) -> Path:
+    folder = resolve_path(rel_path, allow_nonexistent=False)
+    meta = load_meta(folder)
+    meta["service_network"] = {"items": items}
+    save_meta(folder, meta)
+    # regenerate markdown
+    lines = ["# Сеть сервиса", "", "| Name | IP | Mask | Gateway | DNS |", "| --- | --- | --- | --- | --- |"]
+    for row in items:
+        lines.append(
+            f"| {row.get('name','')} | {row.get('ip','')} | {row.get('mask','')} | {row.get('gateway','')} | {row.get('dns','')} |"
+        )
+    write_markdown(folder / "service-network.md", "\n".join(lines))
     return folder
 
 
@@ -313,6 +379,28 @@ def list_recent_changes(limit: int = 10) -> List[Dict]:
             )
     sorted_records = sorted(records, key=lambda x: x[0], reverse=True)
     return [r[1] for r in sorted_records[:limit]]
+
+
+def list_children(rel_path: str) -> List[Dict]:
+    base = resolve_path(rel_path or "")
+    parent_type = node_type(base, base == CONTENT_ROOT)
+    children: List[Dict] = []
+    for entry in sorted(base.iterdir()):
+        if not entry.is_dir() or entry.name.startswith("."):
+            continue
+        meta = load_meta(entry)
+        entry_type = meta.get("type")
+        if entry_type not in allowed_children(parent_type if parent_type != "root" else None):
+            continue
+        children.append(
+            {
+                "name": entry.name,
+                "title": meta.get("title", entry.name),
+                "type": entry_type,
+                "path": entry.relative_to(CONTENT_ROOT).as_posix(),
+            }
+        )
+    return children
 
 
 def breadcrumbs(rel_path: str) -> List[Dict]:

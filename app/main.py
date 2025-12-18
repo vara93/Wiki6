@@ -122,6 +122,8 @@ async def view_page(request: Request, path: str, tab: Optional[str] = None):
             has_index = True
             content_html = render_markdown(wiki_fs.read_markdown(md_file))
 
+    children = wiki_fs.list_children(decoded_path)
+
     context = {
         "request": request,
         "path": decoded_path,
@@ -131,6 +133,7 @@ async def view_page(request: Request, path: str, tab: Optional[str] = None):
         "service_tabs": service_tabs,
         "active_tab": active_tab,
         "has_index": has_index,
+        "children": children,
         **shared_context(decoded_path, entity_type),
     }
     return templates.TemplateResponse("view.html", context)
@@ -164,14 +167,14 @@ async def edit_page(request: Request, path: str, tab: Optional[str] = None):
 
 class MkdirPayload(BaseModel):
     parent: str = ""
-    name: str
+    name: Optional[str] = None
     title: str
     type: str = Field(alias="type")
 
 
 class CreatePagePayload(BaseModel):
     parent: str = ""
-    name: str
+    name: Optional[str] = None
     title: str
     type: str = Field(alias="type")
 
@@ -184,6 +187,19 @@ class SavePayload(BaseModel):
 
 class TrashPayload(BaseModel):
     path: str
+
+
+class ServiceNetworkItem(BaseModel):
+    name: str = ""
+    ip: str = ""
+    mask: str = ""
+    gateway: str = ""
+    dns: str = ""
+
+
+class ServiceNetworkPayload(BaseModel):
+    path: str
+    items: List[ServiceNetworkItem]
 
 
 @app.post("/api/mkdir")
@@ -231,6 +247,13 @@ async def api_save(payload: SavePayload):
     wiki_fs.write_markdown(md_path, payload.content)
     search.update_index_for_path(payload.path)
     return {"ok": True, "saved": True, "path": payload.path, "file": payload.file_name}
+
+
+@app.post("/api/service-network/save")
+async def api_service_network(payload: ServiceNetworkPayload):
+    wiki_fs.save_service_network(payload.path, [item.dict() for item in payload.items])
+    search.update_index_for_path(payload.path)
+    return {"ok": True, "path": payload.path, "view_url": f"/view/{payload.path}?tab=service-network.md"}
 
 
 @app.post("/api/upload")
