@@ -136,6 +136,7 @@ async def view_page(request: Request, path: str, tab: Optional[str] = None):
         "has_index": has_index,
         "children": children,
         "subtree": subtree,
+        "has_content": bool(content_html),
         **shared_context(decoded_path, entity_type),
     }
     return templates.TemplateResponse("view.html", context)

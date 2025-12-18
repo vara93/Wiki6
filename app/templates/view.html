@@ -89,8 +89,8 @@
             <button id="add-row" class="px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 hover:border-accent/50" type="button">Добавить</button>
           </div>
           <div class="space-y-2">
-            <div class="grid grid-cols-5 gap-2 text-xs text-slate-400">
-              <span>Name</span><span>IP</span><span>Mask</span><span>Gateway</span><span>DNS</span>
+            <div class="grid grid-cols-6 gap-2 text-xs text-slate-400">
+              <span>Name</span><span>IP</span><span>Mask</span><span>Gateway</span><span>DNS</span><span></span>
             </div>
             <div id="sn-rows" class="space-y-2" data-rows='{{ rows | tojson }}'></div>
           </div>
@@ -102,26 +102,72 @@
       {% elif content_html %}
         {{ content_html | safe }}
       {% else %}
-        <div class="text-center py-10">
-          <div class="text-lg font-semibold text-white mb-2">Контент ещё не создан</div>
-          <div class="text-sm text-slate-400 mb-4">Создайте index.md{% if service_tabs %} или вкладки сервиса{% endif %}.</div>
-          <div class="flex justify-center gap-2">
-            <a href="/edit/{{ path }}" class="px-4 py-2 rounded-lg bg-accent/20 text-accent border border-accent/40 hover:border-accent">Создать index.md</a>
-          </div>
-        </div>
-        {% if children %}
-          <div class="mt-6">
-            <div class="text-sm text-slate-400 mb-2">Содержимое раздела</div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+        {% if meta.type == 'company' %}
+          <div class="space-y-4">
+            <div class="text-lg font-semibold text-white">ЦОДы компании</div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
               {% for child in children %}
-                <a href="/view/{{ child.path }}" class="px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-accent/40 flex items-center gap-2">
-                  <i data-lucide="{{ icon_map.get(child.type, 'file-text') }}" class="w-4 h-4 text-accent"></i>
-                  <span class="text-slate-200">{{ child.title }}</span>
-                  <span class="text-[10px] uppercase text-slate-500 border border-slate-800 px-1 rounded">{{ child.type }}</span>
+                <a href="/view/{{ child.path }}" class="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-accent/40 flex items-center gap-3">
+                  <i data-lucide="server" class="w-5 h-5 text-accent"></i>
+                  <div>
+                    <div class="text-white font-semibold">{{ child.title }}</div>
+                    <div class="text-xs text-slate-500 uppercase">DC</div>
+                  </div>
                 </a>
               {% endfor %}
+              {% if not children %}
+                <div class="text-sm text-slate-400">Нет ЦОДов. Создайте первый.</div>
+              {% endif %}
+            </div>
+            <div>
+              <a href="#" data-open-create="dc" data-parent="{{ path }}" class="px-4 py-2 rounded-lg bg-accent/20 text-accent border border-accent/40 hover:border-accent">Создать ЦОД</a>
             </div>
           </div>
+        {% elif meta.type == 'dc' %}
+          <div class="space-y-4">
+            <div class="text-lg font-semibold text-white">Разделы и документы ЦОД</div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {% for child in children %}
+                <a href="/view/{{ child.path }}" class="p-3 rounded-xl bg-slate-900 border border-slate-800 hover:border-accent/40 flex items-center gap-3">
+                  <i data-lucide="{{ icon_map.get(child.type, 'file-text') }}" class="w-5 h-5 text-accent"></i>
+                  <div>
+                    <div class="text-white font-semibold">{{ child.title }}</div>
+                    <div class="text-xs text-slate-500 uppercase">{{ child.type }}</div>
+                  </div>
+                </a>
+              {% endfor %}
+              {% if not children %}
+                <div class="text-sm text-slate-400">Нет разделов. Создайте первый.</div>
+              {% endif %}
+            </div>
+            <div class="flex gap-2">
+              <a href="#" data-open-create="section" data-parent="{{ path }}" class="px-4 py-2 rounded-lg bg-accent/20 text-accent border border-accent/40 hover:border-accent">Создать раздел</a>
+              <a href="#" data-open-create="document" data-parent="{{ path }}" class="px-4 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 hover:border-accent/50">Создать документ</a>
+              <a href="#" data-open-create="service" data-parent="{{ path }}" class="px-4 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 hover-border-accent/50">Создать сервис</a>
+            </div>
+          </div>
+        {% else %}
+          <div class="text-center py-10">
+            <div class="text-lg font-semibold text-white mb-2">Контент ещё не создан</div>
+            <div class="text-sm text-slate-400 mb-4">Создайте index.md{% if service_tabs %} или вкладки сервиса{% endif %}.</div>
+            <div class="flex justify-center gap-2">
+              <a href="/edit/{{ path }}" class="px-4 py-2 rounded-lg bg-accent/20 text-accent border border-accent/40 hover:border-accent">Создать index.md</a>
+            </div>
+          </div>
+          {% if children %}
+            <div class="mt-6">
+              <div class="text-sm text-slate-400 mb-2">Содержимое раздела</div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {% for child in children %}
+                  <a href="/view/{{ child.path }}" class="px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 hover:border-accent/40 flex items-center gap-2">
+                    <i data-lucide="{{ icon_map.get(child.type, 'file-text') }}" class="w-4 h-4 text-accent"></i>
+                    <span class="text-slate-200">{{ child.title }}</span>
+                    <span class="text-[10px] uppercase text-slate-500 border border-slate-800 px-1 rounded">{{ child.type }}</span>
+                  </a>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
         {% endif %}
       {% endif %}
     </div>

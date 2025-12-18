@@ -47,6 +47,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const createType = document.getElementById("create-type");
   const createError = document.getElementById("create-error");
   const createGenerate = document.getElementById("create-generate");
+  const createNameHint = document.getElementById("create-name-hint");
   const parentSelect = document.getElementById("parent-select");
   const uploadParent = document.getElementById("upload-parent");
   const uploadFile = document.getElementById("upload-file");
@@ -141,6 +142,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
+  const setNameHint = (slug) => {
+    if (createNameHint) {
+      createNameHint.textContent = slug ? `Будет создано как: ${slug}` : "";
+    }
+  };
+
   const applyAllowedTypes = (contextType) => {
     const allowed = allowedByParent[contextType] || [];
     const options = Array.from(createType.options);
@@ -155,6 +162,7 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   let currentTree = [];
+  let pathTypeMap = new Map();
 
   const renderSidebar = async () => {
     const container = document.getElementById("sidebar-tree");
@@ -165,9 +173,11 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
       if (!data.ok) throw new Error("tree fetch error");
       currentTree = data.tree || [];
+      pathTypeMap = new Map();
       const renderNodes = (nodes, level = 0) => {
         const items = nodes
           .map((n) => {
+            pathTypeMap.set(n.path, n.type);
             const children = n.children && n.children.length ? renderNodes(n.children, level + 1) : "";
             const iconMap = {
               company: "building-2",
@@ -232,19 +242,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (createTitle && createName) {
     createTitle.addEventListener("input", () => {
-      if (!createName.value) {
-        createName.value = slugify(createTitle.value);
-      }
+      const slug = slugify(createTitle.value);
+      createName.value = slug;
+      setNameHint(slug);
     });
     createName.addEventListener("input", () => {
       createName.value = createName.value.replace(/\s+/g, "-");
+      setNameHint(createName.value);
     });
   }
 
   if (createGenerate && createTitle && createName) {
     createGenerate.addEventListener("click", (e) => {
       e.preventDefault();
-      createName.value = slugify(createTitle.value || createName.value);
+      const slug = slugify(createTitle.value || createName.value);
+      createName.value = slug;
+      setNameHint(slug);
       setError("");
     });
   }
@@ -258,8 +271,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const contextAllowedTypes = (parentPath) => {
     if (!parentPath) return applyAllowedTypes("root");
-    if (parentPath === currentPath) return applyAllowedTypes(currentType);
-    return applyAllowedTypes(currentType); // fallback
+    const parentType = pathTypeMap.get(parentPath) || (parentPath === currentPath ? currentType : "section");
+    return applyAllowedTypes(parentType);
   };
 
   document.querySelectorAll("[data-create-type]").forEach((btn) => {
@@ -457,15 +470,24 @@ document.addEventListener("DOMContentLoaded", () => {
       rowsHolder.innerHTML = "";
       rows.forEach((row, idx) => {
         const div = document.createElement("div");
-        div.className = "grid grid-cols-5 gap-2";
+        div.className = "grid grid-cols-6 gap-2 items-center";
         div.innerHTML = `
           <input data-field="name" data-idx="${idx}" value="${row.name || ""}" class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm">
           <input data-field="ip" data-idx="${idx}" value="${row.ip || ""}" class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm">
           <input data-field="mask" data-idx="${idx}" value="${row.mask || ""}" class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm">
           <input data-field="gateway" data-idx="${idx}" value="${row.gateway || ""}" class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm">
           <input data-field="dns" data-idx="${idx}" value="${row.dns || ""}" class="bg-slate-900 border border-slate-800 rounded px-2 py-1 text-sm">
+          <button type="button" data-remove="${idx}" class="px-2 py-1 text-xs rounded bg-slate-800 border border-slate-700 text-rose-300 hover:border-rose-400">-</button>
         `;
         rowsHolder.appendChild(div);
+      });
+      rowsHolder.querySelectorAll("[data-remove]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const idx = Number(btn.dataset.remove);
+          rows.splice(idx, 1);
+          if (!rows.length) rows.push({ name: "", ip: "", mask: "", gateway: "", dns: "" });
+          renderRows(rows);
+        });
       });
     };
     let rows = [];
