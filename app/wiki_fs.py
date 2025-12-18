@@ -26,10 +26,10 @@ def _now_iso() -> str:
 
 def validate_system_name(name: str) -> str:
     if not name or any(ch in name for ch in ["/", "\\", ".."]):
-        raise WikiPathError("Invalid name")
+        raise WikiPathError("Invalid system name. Use latin letters, digits, '-' or '_'.")
     allowed = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
     if not set(name) <= allowed:
-        raise WikiPathError("Name must contain only letters, numbers, dash or underscore")
+        raise WikiPathError("Invalid system name. Use latin letters, digits, '-' or '_'.")
     return name
 
 

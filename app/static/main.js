@@ -44,13 +44,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const createTitle = document.getElementById("create-title");
   const createName = document.getElementById("create-name");
   const createType = document.getElementById("create-type");
+  const createError = document.getElementById("create-error");
+  const createGenerate = document.getElementById("create-generate");
   const uploadParent = document.getElementById("upload-parent");
   const uploadFile = document.getElementById("upload-file");
 
   const mdTypes = new Set(["document", "service", "server", "network"]);
+  const nameRegex = /^[a-zA-Z0-9_-]+$/;
 
   const hideMenu = () => menu && menu.classList.add("hidden");
-  const showMenu = () => menu && menu.classList.remove("hidden");
 
   const openModal = (type) => {
     if (!modalBackdrop) return;
@@ -71,6 +73,59 @@ document.addEventListener("DOMContentLoaded", () => {
     modalBackdrop.classList.remove("flex");
   };
 
+  const slugify = (text) => {
+    if (!text) return "";
+    const translitMap = {
+      а: "a",
+      б: "b",
+      в: "v",
+      г: "g",
+      д: "d",
+      е: "e",
+      ё: "e",
+      ж: "zh",
+      з: "z",
+      и: "i",
+      й: "y",
+      к: "k",
+      л: "l",
+      м: "m",
+      н: "n",
+      о: "o",
+      п: "p",
+      р: "r",
+      с: "s",
+      т: "t",
+      у: "u",
+      ф: "f",
+      х: "h",
+      ц: "c",
+      ч: "ch",
+      ш: "sh",
+      щ: "shch",
+      ы: "y",
+      э: "e",
+      ю: "yu",
+      я: "ya",
+    };
+    return text
+      .trim()
+      .toLowerCase()
+      .split("")
+      .map((ch) => translitMap[ch] || ch)
+      .join("")
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9_-]/g, "")
+      .replace(/-+/g, "-");
+  };
+
+  const setError = (msg) => {
+    if (createError) {
+      createError.textContent = msg || "";
+      createError.classList.toggle("hidden", !msg);
+    }
+  };
+
   if (menuBtn && menu) {
     menuBtn.addEventListener("click", () => {
       menu.classList.toggle("hidden");
@@ -82,6 +137,25 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  if (createTitle && createName) {
+    createTitle.addEventListener("input", () => {
+      if (!createName.value) {
+        createName.value = slugify(createTitle.value);
+      }
+    });
+    createName.addEventListener("input", () => {
+      createName.value = createName.value.replace(/\s+/g, "-");
+    });
+  }
+
+  if (createGenerate && createTitle && createName) {
+    createGenerate.addEventListener("click", (e) => {
+      e.preventDefault();
+      createName.value = slugify(createTitle.value || createName.value);
+      setError("");
+    });
+  }
+
   document.querySelectorAll("[data-create-type]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const type = btn.dataset.createType;
@@ -89,6 +163,7 @@ document.addEventListener("DOMContentLoaded", () => {
       createParent.value = currentPath;
       createName.value = "";
       createTitle.value = "";
+      setError("");
       hideMenu();
       openModal("create");
     });
@@ -100,6 +175,7 @@ document.addEventListener("DOMContentLoaded", () => {
       createParent.value = btn.dataset.parent || currentPath;
       createName.value = "";
       createTitle.value = "";
+      setError("");
       openModal("create");
     });
   });
@@ -119,11 +195,17 @@ document.addEventListener("DOMContentLoaded", () => {
   if (createForm) {
     createForm.addEventListener("submit", async (e) => {
       e.preventDefault();
+      setError("");
+      const nameValue = createName.value.trim();
+      if (!nameRegex.test(nameValue)) {
+        setError("Используйте латиницу, цифры, - или _ (без пробелов)");
+        return;
+      }
       const typeValue = createType.value;
       const payload = {
         parent: createParent.value || "",
-        name: createName.value.trim(),
-        title: createTitle.value.trim() || createName.value.trim(),
+        name: nameValue,
+        title: createTitle.value.trim() || nameValue,
         type_value: typeValue,
       };
       const endpoint = mdTypes.has(typeValue) ? "/api/create-page" : "/api/mkdir";
@@ -133,12 +215,20 @@ document.addEventListener("DOMContentLoaded", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        const data = await res.json();
         if (!res.ok) {
-          const data = await res.json();
-          alert(data.detail || "Ошибка создания");
+          if (data.detail && typeof data.detail === "object") {
+            const msg = data.detail.error || data.detail.message || JSON.stringify(data.detail);
+            setError(msg);
+          } else if (data.detail) {
+            setError(typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail));
+          } else if (data.error) {
+            setError(data.error);
+          } else {
+            setError("Ошибка сохранения");
+          }
           return;
         }
-        const data = await res.json();
         closeModal();
         if (data.ok && data.view_url) {
           window.location.href = data.view_url;
@@ -147,7 +237,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       } catch (err) {
         console.error(err);
-        alert("Ошибка сети");
+        setError("Ошибка сети. Проверьте подключение.");
       }
     });
   }

@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -183,8 +183,16 @@ class TrashPayload(BaseModel):
 async def api_mkdir(payload: MkdirPayload):
     try:
         folder = wiki_fs.create_folder(payload.parent or "", payload.name, payload.type_value, payload.title)
+    except wiki_fs.WikiPathError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={"ok": False, "error": str(e), "field": "name"},
+        )
     except FileExistsError:
-        raise HTTPException(status_code=400, detail="Узел уже существует")
+        raise HTTPException(
+            status_code=409,
+            detail={"ok": False, "error": "Узел уже существует", "field": "name"},
+        )
     search.update_index_for_path(folder.relative_to(wiki_fs.CONTENT_ROOT).as_posix())
     path_str = folder.relative_to(wiki_fs.CONTENT_ROOT).as_posix()
     return {"ok": True, "path": path_str, "view_url": f"/view/{path_str}", "title": payload.title}
@@ -194,8 +202,16 @@ async def api_mkdir(payload: MkdirPayload):
 async def api_create_page(payload: CreatePagePayload):
     try:
         folder = wiki_fs.create_page(payload.parent or "", payload.name, payload.title, payload.type_value)
+    except wiki_fs.WikiPathError as e:
+        raise HTTPException(
+            status_code=400,
+            detail={"ok": False, "error": str(e), "field": "name"},
+        )
     except FileExistsError:
-        raise HTTPException(status_code=400, detail="Узел уже существует")
+        raise HTTPException(
+            status_code=409,
+            detail={"ok": False, "error": "Узел уже существует", "field": "name"},
+        )
     search.update_index_for_path(folder.relative_to(wiki_fs.CONTENT_ROOT).as_posix())
     path_str = folder.relative_to(wiki_fs.CONTENT_ROOT).as_posix()
     return {"ok": True, "path": path_str, "view_url": f"/view/{path_str}", "title": payload.title}
@@ -248,5 +264,7 @@ async def search_page(request: Request, q: Optional[str] = None):
 
 
 @app.exception_handler(wiki_fs.WikiPathError)
-async def wiki_path_error_handler(_, exc: wiki_fs.WikiPathError):
+async def wiki_path_error_handler(request: Request, exc: wiki_fs.WikiPathError):
+    if str(request.url.path).startswith("/api/"):
+        return JSONResponse(status_code=400, content={"ok": False, "error": str(exc), "field": "path"})
     return HTMLResponse(content=f"<h3>Bad path: {exc}</h3>", status_code=400)
